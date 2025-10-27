@@ -1434,18 +1434,23 @@
                 try {
                     const normalizeId = (value) => {
                         if (Array.isArray(value)) {
-                            return value[0] || '';
+                            value = value[0];
                         }
-                        return value || '';
+                        if (value === null || value === undefined) {
+                            return '';
+                        }
+                        return String(value).trim();
                     };
 
-                    const campaign_id = normalizeId(CompaniInfo && CompaniInfo.campaign_id);
-                    const campaign_snap_id = normalizeId(CompaniInfo && CompaniInfo.campaign_snap_id);
-                    const campaign_sketch_id = normalizeId(CompaniInfo && CompaniInfo.campaign_sketch_id);
-                    const ad_snap_id = normalizeId(adsetId);
-                    const ad_sketch_id = normalizeId(adScetchId);
-                    const creative_snap_publish_id = normalizeId(creative_snap_id);
-                    const creative_sketch_publish_id = normalizeId(creative_sketch_id);
+                    const ensureNonEmpty = (value) => value && value.length ? value : '';
+
+                    const campaign_id = ensureNonEmpty(normalizeId(CompaniInfo && CompaniInfo.campaign_id));
+                    const campaign_snap_id = ensureNonEmpty(normalizeId(CompaniInfo && CompaniInfo.campaign_snap_id));
+                    const campaign_sketch_id = ensureNonEmpty(normalizeId(CompaniInfo && CompaniInfo.campaign_sketch_id));
+                    const ad_snap_id = ensureNonEmpty(normalizeId(adsetId));
+                    const ad_sketch_id = ensureNonEmpty(normalizeId(adScetchId));
+                    const creative_snap_publish_id = ensureNonEmpty(normalizeId(creative_snap_id));
+                    const creative_sketch_publish_id = ensureNonEmpty(normalizeId(creative_sketch_id));
 
                     if (!campaign_snap_id || !campaign_sketch_id || !creative_snap_publish_id || !creative_sketch_publish_id || !ad_snap_id || !ad_sketch_id) {
                         console.error('Missing identifiers required for publish', {
@@ -1459,38 +1464,77 @@
                         return;
                     }
 
-                    var finJSON = {
-                        "campaign_id": campaign_id,
-                        "campaign_snap_id": campaign_snap_id,
-                        "ad_and_creative_snap_info_list": [
-                            {
-                                "ad_id": "",
-                                "ad_snap_id": ad_snap_id,
-                                "ad_sketch_id": ad_sketch_id,
-                                "creative_snap_info_list": [
-                                    {
-                                        "creative_id": "",
-                                        "creative_snap_id": creative_snap_publish_id,
-                                        "creative_sketch_id": creative_sketch_publish_id,
-                                        "need_publish": true
-                                    }
-                                ],
-                                "need_publish": true
-                            }
-                        ],
-                        "coming_source_type": 1,
-                        "sketch_publish_source": 2,
-                        "campaign_sketch_id": campaign_sketch_id,
-                        "is_partial_publish": false,
-                        "need_publish": true
+                    const buildPublishPayload = () => {
+                        const payload = {
+                            campaign_id,
+                            campaign_snap_id,
+                            campaign_sketch_id,
+                            coming_source_type: 1,
+                            sketch_publish_source: 2,
+                            need_publish: true,
+                            is_partial_publish: false,
+                            publish_immediately: true,
+                            ad_and_creative_snap_info_list: [
+                                {
+                                    ad_id: '',
+                                    ad_snap_id,
+                                    ad_sketch_id,
+                                    need_publish: true,
+                                    creative_snap_info_list: [
+                                        {
+                                            creative_id: '',
+                                            creative_snap_id: creative_snap_publish_id,
+                                            creative_sketch_id: creative_sketch_publish_id,
+                                            need_publish: true
+                                        }
+                                    ]
+                                }
+                            ]
+                        };
 
-                    }
+                        // drop campaign_id if still empty, TikTok rejects explicit empty strings
+                        if (!payload.campaign_id) {
+                            delete payload.campaign_id;
+                        }
+
+                        return payload;
+                    };
+
+                    const finJSON = buildPublishPayload();
                     const publishComp = await safeFetchJson(`https://ads.tiktok.com/api/v4/i18n/creation/async_creation/create_by_snap/?aadvid=${accountID}`, {
                         headers: {'content-type': 'application/json;charset=UTF-8', 'x-csrftoken': `${csrfToken}`},
                         body: JSON.stringify(finJSON),
                         method: 'POST'
                     });
                     console.log('publishComp publish response:', publishComp);
+
+                    const needsFollowUpPublish = publishComp && publishComp.data && (publishComp.data.need_manual_publish || publishComp.data.publish_status === 0);
+
+                    if (needsFollowUpPublish) {
+                        const publishNowPayload = {
+                            campaign_snap_id,
+                            campaign_sketch_id,
+                            sketch_publish_source: 2,
+                            need_publish: true,
+                            publish_scene: 1,
+                            publish_infos: [
+                                {
+                                    ad_snap_id,
+                                    ad_sketch_id,
+                                    need_publish: true,
+                                    creative_snap_ids: [creative_snap_publish_id],
+                                    creative_sketch_ids: [creative_sketch_publish_id]
+                                }
+                            ]
+                        };
+
+                        const publishNowRes = await safeFetchJson(`https://ads.tiktok.com/api/v4/i18n/creation/async_creation/publish_by_snap/?aadvid=${accountID}`, {
+                            headers: {'content-type': 'application/json;charset=UTF-8', 'x-csrftoken': `${csrfToken}`},
+                            body: JSON.stringify(publishNowPayload),
+                            method: 'POST'
+                        });
+                        console.log('publish_by_snap response:', publishNowRes);
+                    }
                 }catch (e) {
                     console.log('Publish error:', e);
                 }
