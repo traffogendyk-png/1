@@ -1429,22 +1429,49 @@
                 });
 
                 console.log('creative_snap save response:', finalCreativeRes);
-                var creative_snap_id = finalCreativeRes.data.creative_snap_ids;
-                var creative_sketch_id= finalCreativeRes.data.creative_sketch_ids;
+                var creative_snap_id = finalCreativeRes?.data?.creative_snap_ids;
+                var creative_sketch_id= finalCreativeRes?.data?.creative_sketch_ids;
                 try {
+                    const normalizeId = (value) => {
+                        if (Array.isArray(value)) {
+                            return value[0] || '';
+                        }
+                        return value || '';
+                    };
+
+                    const campaign_id = normalizeId(CompaniInfo && CompaniInfo.campaign_id);
+                    const campaign_snap_id = normalizeId(CompaniInfo && CompaniInfo.campaign_snap_id);
+                    const campaign_sketch_id = normalizeId(CompaniInfo && CompaniInfo.campaign_sketch_id);
+                    const ad_snap_id = normalizeId(adsetId);
+                    const ad_sketch_id = normalizeId(adScetchId);
+                    const creative_snap_publish_id = normalizeId(creative_snap_id);
+                    const creative_sketch_publish_id = normalizeId(creative_sketch_id);
+
+                    if (!campaign_snap_id || !campaign_sketch_id || !creative_snap_publish_id || !creative_sketch_publish_id || !ad_snap_id || !ad_sketch_id) {
+                        console.error('Missing identifiers required for publish', {
+                            campaign_snap_id,
+                            campaign_sketch_id,
+                            creative_snap_publish_id,
+                            creative_sketch_publish_id,
+                            ad_snap_id,
+                            ad_sketch_id,
+                        });
+                        return;
+                    }
+
                     var finJSON = {
-                        "campaign_id": "",
-                        "campaign_snap_id": CompaniInfo.campaign_snap_id,
+                        "campaign_id": campaign_id,
+                        "campaign_snap_id": campaign_snap_id,
                         "ad_and_creative_snap_info_list": [
                             {
                                 "ad_id": "",
-                                "ad_snap_id": adsetId,
-                                "ad_sketch_id": adScetchId,
+                                "ad_snap_id": ad_snap_id,
+                                "ad_sketch_id": ad_sketch_id,
                                 "creative_snap_info_list": [
                                     {
                                         "creative_id": "",
-                                        "creative_snap_id": creative_snap_id[0],
-                                        "creative_sketch_id": creative_sketch_id[0],
+                                        "creative_snap_id": creative_snap_publish_id,
+                                        "creative_sketch_id": creative_sketch_publish_id,
                                         "need_publish": true
                                     }
                                 ],
@@ -1453,8 +1480,9 @@
                         ],
                         "coming_source_type": 1,
                         "sketch_publish_source": 2,
-                        "campaign_sketch_id": CompaniInfo.campaign_snap_id,
+                        "campaign_sketch_id": campaign_sketch_id,
                         "is_partial_publish": false,
+                        "need_publish": true
 
                     }
                     const publishComp = await safeFetchJson(`https://ads.tiktok.com/api/v4/i18n/creation/async_creation/create_by_snap/?aadvid=${accountID}`, {
