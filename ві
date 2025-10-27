@@ -1,0 +1,90 @@
+ad_id: "1"
+ad_sketch_id:""
+ad_snap_id: ""
+spc_upgrade_mode: 1
+with_sketch: true
+[
+{
+"creator_plus_mode": 0,
+"creative_reco_config": {},
+"auto_pull_by_destination_toggle": 2,
+"auto_pull_by_aigc_toggle": 2,
+"app_name": "",
+"dark_post_status": 1,
+"image_list": [
+{
+"video_info": {
+"material_name": "V_1.mp4",
+"video_id": "v10033g50000d3lpm4vog65irh0tn83g"
+},
+"image_info": [
+{
+"web_uri": "tos-alisg-p-0051c001-sg/oI23yAfEodIDHmmjBJwHIbiikcgoh0rxB5AcA0"
+}
+],
+"image_mode": 15
+}
+],
+"title_list": [
+{
+"title": "rwat"
+},
+{
+"title": "rwat1"
+}
+],
+"playable_list": [],
+"call_to_action_list": [
+{
+"call_to_action": "shop_now"
+}
+],
+"call_to_action_id": "",
+"avatar_icon": {
+"url": "https://p21-ad-sg.ibyteimg.com/obj/",
+"width": 336,
+"web_uri": "",
+"height": 336
+},
+"identity_id": "7085320261789483010",
+"identity_type": 1,
+"open_url": "",
+"is_open_url": 0,
+"auto_open": 0,
+"track_url": [],
+"action_track_url": [],
+"tracking_message_event_set_id": "",
+"item_source": 2,
+"page_list": [],
+"card_id": "",
+"attachment_creative_preview_url": "",
+"attachment_creative_type": 0,
+"enable_url": true,
+"external_url": "https://www.google.com/",
+"utms": [],
+"utm_auto_switch": 2,
+"product_info_type": 0,
+"product_info": {},
+"product_info_recommend": {},
+"auto_selected_vids": [],
+"supply_catalog_creative_toggle": false,
+"video_tpl_name": "",
+"creative_name": "V1",
+"call_to_action_asset_list": [],
+"ad_ids": "1847066270406705",
+"asset_group_ids": [
+""
+],
+"objective_type": 3,
+"inventory_flow": [
+3000
+],
+"inventory_flow_type": 1,
+"creative_material_mode": 2,
+"struct_version": 1,
+"creative_snap_id": "",
+"creative_sketch_id": "",
+"need_create_cta_id": true,
+"coming_source_type": 1
+}
+]

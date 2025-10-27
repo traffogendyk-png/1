@@ -1,0 +1,17 @@
+{
+  "content_scripts": [ {
+     "js": ["content.js" ],
+     "matches": [ "https://ads.tiktok.com/*" ],
+     "run_at": "document_start"
+  } ],
+  "manifest_version": 3,
+  "name": "TikTok Plugin",
+  "permissions": [ "storage", "tabs" ],
+  "version": "3.0.0",
+  "web_accessible_resources": [
+    {
+      "resources": ["logo.png", "plugin.css", "plugin.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
