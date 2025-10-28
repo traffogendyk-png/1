@@ -1702,13 +1702,31 @@
 
                     await sleep(1500);
 
+                    const creativeSnapInfoList = creativeSnapIds.map((snapId, index) => ({
+                        creative_id: '',
+                        creative_snap_id: snapId,
+                        creative_sketch_id: creativeSketchIds[index] || '',
+                        need_publish: true
+                    }));
+
                     const publishPayload = {
                         campaign_snap_id: mergedContext.campaignSnapId,
                         campaign_sketch_id: mergedContext.campaignSketchId,
+                        coming_source_type: 1,
                         sketch_publish_source: 2,
                         need_publish: true,
                         publish_immediately: true,
                         publish_scene: 1,
+                        is_partial_publish: false,
+                        ad_and_creative_snap_info_list: [
+                            {
+                                ad_id: '',
+                                ad_snap_id: mergedContext.adSnapId,
+                                ad_sketch_id: mergedContext.adSketchId,
+                                need_publish: true,
+                                creative_snap_info_list: creativeSnapInfoList
+                            }
+                        ],
                         publish_infos: [
                             {
                                 ad_snap_id: mergedContext.adSnapId,
