@@ -197,112 +197,6 @@
         try { return JSON.stringify(obj); } catch (e) { return '{}'; }
     }
 
-    // Normalize identifiers that can arrive as scalars, arrays, or nested containers
-    function normalizeIdValue(value) {
-        if (Array.isArray(value)) {
-            const result = [];
-            for (const item of value) {
-                const normalized = normalizeIdValue(item);
-                if (Array.isArray(normalized)) {
-                    for (const inner of normalized) {
-                        if (inner) {
-                            result.push(inner);
-                        }
-                    }
-                } else if (normalized) {
-                    result.push(normalized);
-                }
-            }
-            return result;
-        }
-
-        if (value === null || value === undefined) {
-            return [];
-        }
-
-        if (typeof value === 'object') {
-            // For objects try a few common properties that might contain the actual id value
-            const objectCandidates = [];
-            if ('id' in value) objectCandidates.push(value.id);
-            if ('ids' in value) objectCandidates.push(value.ids);
-            if ('value' in value) objectCandidates.push(value.value);
-            if ('values' in value) objectCandidates.push(value.values);
-
-            if (objectCandidates.length) {
-                return normalizeIdValue(objectCandidates);
-            }
-            return [];
-        }
-
-        const trimmed = String(value).trim();
-        return trimmed ? [trimmed] : [];
-    }
-
-    function collectIds(...values) {
-        const result = [];
-        const seen = new Set();
-
-        for (const value of values) {
-            const normalizedList = normalizeIdValue(value);
-            for (const normalized of normalizedList) {
-                if (!seen.has(normalized)) {
-                    seen.add(normalized);
-                    result.push(normalized);
-                }
-            }
-        }
-
-        return result;
-    }
-
-    function firstNonEmptyId(...values) {
-        const collected = collectIds(...values);
-        return collected.length ? collected[0] : '';
-    }
-
-    function findIdInObject(source, candidateKeys) {
-        if (!source) return '';
-
-        const queue = Array.isArray(source) ? [...source] : [source];
-        const visited = new Set();
-
-        while (queue.length) {
-            const current = queue.shift();
-            if (!current || typeof current !== 'object') {
-                continue;
-            }
-
-            if (visited.has(current)) {
-                continue;
-            }
-            visited.add(current);
-
-            for (const key of candidateKeys) {
-                if (Object.prototype.hasOwnProperty.call(current, key)) {
-                    const maybe = firstNonEmptyId(current[key]);
-                    if (maybe) {
-                        return maybe;
-                    }
-                }
-            }
-
-            for (const value of Object.values(current)) {
-                if (!value) continue;
-                if (typeof value === 'object') {
-                    if (Array.isArray(value)) {
-                        for (const nested of value) {
-                            queue.push(nested);
-                        }
-                    } else {
-                        queue.push(value);
-                    }
-                }
-            }
-        }
-
-        return '';
-    }
-
     //https://ads.tiktok.com/api/v4/i18n/creation/spark/identity/select/?aadvid=7550052920746721296&req_src=ad_creation&msToken=
     // {
     //     "cursor": "0",
@@ -1535,183 +1429,124 @@
                 });
 
                 console.log('creative_snap save response:', finalCreativeRes);
-                const creativeSnapCandidates = collectIds(
-                    finalCreativeRes?.data?.creative_snap_ids,
-                    finalCreativeRes?.data?.creative_snap_id
+
+                const collectIds = (...sources) => {
+                    const result = [];
+                    const pushVal = (value) => {
+                        if (value === undefined || value === null) return;
+                        if (Array.isArray(value)) {
+                            value.forEach(pushVal);
+                            return;
+                        }
+                        const normalized = String(value).trim();
+                        if (!normalized) return;
+                        if (!result.includes(normalized)) {
+                            result.push(normalized);
+                        }
+                    };
+                    sources.forEach(pushVal);
+                    return result;
+                };
+
+                const creativeSnapIds = collectIds(
+                    finalCreativeRes && finalCreativeRes.data && finalCreativeRes.data.creative_snap_ids,
+                    finalCreativeRes && finalCreativeRes.data && finalCreativeRes.data.creative_snap_id
                 );
-                const creativeSketchCandidates = collectIds(
-                    finalCreativeRes?.data?.creative_sketch_ids,
-                    finalCreativeRes?.data?.creative_sketch_id
+                const creativeSketchIds = collectIds(
+                    finalCreativeRes && finalCreativeRes.data && finalCreativeRes.data.creative_sketch_ids,
+                    finalCreativeRes && finalCreativeRes.data && finalCreativeRes.data.creative_sketch_id
                 );
+
+                if (!creativeSnapIds.length || !creativeSketchIds.length) {
+                    console.error('Missing creative identifiers required for publish', {
+                        creativeSnapIds,
+                        creativeSketchIds,
+                        response: finalCreativeRes
+                    });
+                    return;
+                }
+
                 try {
-                    const baseContext = {
-                        campaignId: firstNonEmptyId(
-                            CompaniInfo?.campaign_id,
-                            CompaniInfo?.campaign_ids
-                        ),
-                        campaignSnapId: firstNonEmptyId(
-                            CompaniInfo?.campaign_snap_id,
-                            CompaniInfo?.campaign_snap_ids
-                        ),
-                        campaignSketchId: firstNonEmptyId(
-                            CompaniInfo?.campaign_sketch_id,
-                            CompaniInfo?.campaign_sketch_ids
-                        ),
-                        adSnapId: firstNonEmptyId(
-                            adsetId,
-                            lastidJson?.ad_snap_id,
-                            lastidJson?.ad_snap_ids,
-                            lastidJson?.ad_ids
-                        ),
-                        adSketchId: firstNonEmptyId(
-                            adScetchId,
-                            lastidJson?.ad_sketch_id,
-                            lastidJson?.ad_sketch_ids,
-                            adsetId
-                        )
+                    const baseCampaignId = (CompaniInfo && (CompaniInfo.campaign_id || (Array.isArray(CompaniInfo.campaign_ids) ? CompaniInfo.campaign_ids[0] : ''))) || '';
+
+                    const finJSON = {
+                        campaign_id: baseCampaignId,
+                        campaign_snap_id: CompaniInfo.campaign_snap_id,
+                        campaign_sketch_id: CompaniInfo.campaign_sketch_id,
+                        coming_source_type: 1,
+                        sketch_publish_source: 2,
+                        need_publish: true,
+                        publish_immediately: true,
+                        is_partial_publish: false,
+                        ad_and_creative_snap_info_list: [
+                            {
+                                ad_id: '',
+                                ad_snap_id: adsetId,
+                                ad_sketch_id: adScetchId,
+                                need_publish: true,
+                                creative_snap_info_list: creativeSnapIds.map((snapId, index) => ({
+                                    creative_id: '',
+                                    creative_snap_id: snapId,
+                                    creative_sketch_id: creativeSketchIds[index] || creativeSketchIds[0] || '',
+                                    need_publish: true
+                                }))
+                            }
+                        ]
                     };
-
-                    const ensureIdentifiers = (ctx, creativeSnapIds, creativeSketchIds, label) => {
-                        const missing = [];
-                        if (!ctx.campaignSnapId) missing.push('campaignSnapId');
-                        if (!ctx.campaignSketchId) missing.push('campaignSketchId');
-                        if (!ctx.adSnapId) missing.push('adSnapId');
-                        if (!ctx.adSketchId) missing.push('adSketchId');
-                        if (!creativeSnapIds.length) missing.push('creativeSnapIds');
-                        if (!creativeSketchIds.length) missing.push('creativeSketchIds');
-                        if (missing.length) {
-                            console.error(`Missing identifiers required for publish${label ? ` (${label})` : ''}`, {
-                                missing,
-                                context: ctx,
-                                creativeSnapIds,
-                                creativeSketchIds
-                            });
-                            return false;
-                        }
-                        return true;
-                    };
-
-                    if (!ensureIdentifiers(baseContext, creativeSnapCandidates, creativeSketchCandidates, 'base')) {
-                        return;
-                    }
-
-                    const buildCreateBySnapPayload = (ctx, creativeSnapId, creativeSketchId) => {
-                        const payload = {
-                            campaign_snap_id: ctx.campaignSnapId,
-                            campaign_sketch_id: ctx.campaignSketchId,
-                            coming_source_type: 1,
-                            sketch_publish_source: 2,
-                            need_publish: true,
-                            is_partial_publish: false,
-                            publish_immediately: true,
-                            ad_and_creative_snap_info_list: [
-                                {
-                                    ad_id: '',
-                                    ad_snap_id: ctx.adSnapId,
-                                    ad_sketch_id: ctx.adSketchId,
-                                    need_publish: true,
-                                    creative_snap_info_list: [
-                                        {
-                                            creative_id: '',
-                                            creative_snap_id: creativeSnapId,
-                                            creative_sketch_id: creativeSketchId,
-                                            need_publish: true
-                                        }
-                                    ]
-                                }
-                            ]
-                        };
-
-                        if (ctx.campaignId) {
-                            payload.campaign_id = ctx.campaignId;
-                        }
-
-                        return payload;
-                    };
-
-                    const createBySnapPayload = buildCreateBySnapPayload(
-                        baseContext,
-                        creativeSnapCandidates[0],
-                        creativeSketchCandidates[0]
-                    );
 
                     const createBySnapRes = await safeFetchJson(`https://ads.tiktok.com/api/v4/i18n/creation/async_creation/create_by_snap/?aadvid=${accountID}`, {
                         headers: {'content-type': 'application/json;charset=UTF-8', 'x-csrftoken': `${csrfToken}`},
-                        body: JSON.stringify(createBySnapPayload),
+                        body: JSON.stringify(finJSON),
                         method: 'POST'
                     });
                     console.log('create_by_snap response:', createBySnapRes);
 
-                    if (!createBySnapRes || createBySnapRes.code !== 0) {
-                        console.error('create_by_snap reported an issue', createBySnapRes);
+                    if (!createBySnapRes || (createBySnapRes.code !== 0 && createBySnapRes.msg !== 'success')) {
+                        console.error('create_by_snap failed, skipping publish', createBySnapRes);
+                        return;
                     }
 
-                    const mergeContextFromResponse = (ctx, response) => {
-                        if (!response) return ctx;
-                        const merged = Object.assign({}, ctx);
-                        const data = response?.data || {};
-                        const publishInfos = Array.isArray(data.publish_infos) ? data.publish_infos : [];
+                    const resolvedCampaignSnapId = (createBySnapRes.data && (createBySnapRes.data.campaign_snap_id || (Array.isArray(createBySnapRes.data.campaign_snap_ids) ? createBySnapRes.data.campaign_snap_ids[0] : null))) || CompaniInfo.campaign_snap_id;
+                    const resolvedCampaignSketchId = (createBySnapRes.data && (createBySnapRes.data.campaign_sketch_id || (Array.isArray(createBySnapRes.data.campaign_sketch_ids) ? createBySnapRes.data.campaign_sketch_ids[0] : null))) || CompaniInfo.campaign_sketch_id;
+                    const resolvedCampaignId = (createBySnapRes.data && (createBySnapRes.data.campaign_id || (Array.isArray(createBySnapRes.data.campaign_ids) ? createBySnapRes.data.campaign_ids[0] : null))) || baseCampaignId;
 
-                        const assignFrom = (field, ...sources) => {
-                            const nextValue = firstNonEmptyId(merged[field], ...sources);
-                            if (nextValue) {
-                                merged[field] = nextValue;
-                            }
-                        };
+                    const resolvedAdSnapId = (createBySnapRes.data && (createBySnapRes.data.ad_snap_id || (Array.isArray(createBySnapRes.data.ad_snap_ids) ? createBySnapRes.data.ad_snap_ids[0] : null))) || adsetId;
+                    const resolvedAdSketchId = (createBySnapRes.data && (createBySnapRes.data.ad_sketch_id || (Array.isArray(createBySnapRes.data.ad_sketch_ids) ? createBySnapRes.data.ad_sketch_ids[0] : null))) || adScetchId;
 
-                        assignFrom('campaignId', data.campaign_id, data.campaign_ids);
-                        assignFrom('campaignSnapId', data.campaign_snap_id, data.campaign_snap_ids);
-                        assignFrom('campaignSketchId', data.campaign_sketch_id, data.campaign_sketch_ids);
-                        assignFrom(
-                            'adSnapId',
-                            data.ad_snap_id,
-                            data.ad_snap_ids,
-                            publishInfos.map(info => info && info.ad_snap_id)
-                        );
-                        assignFrom(
-                            'adSketchId',
-                            data.ad_sketch_id,
-                            data.ad_sketch_ids,
-                            publishInfos.map(info => info && info.ad_sketch_id)
-                        );
-
-                        return merged;
-                    };
-
-                    const mergedContext = mergeContextFromResponse(baseContext, createBySnapRes);
-
-                    const publishInfos = Array.isArray(createBySnapRes?.data?.publish_infos)
-                        ? createBySnapRes.data.publish_infos
-                        : [];
-                    const creativeSnapIds = collectIds(
-                        creativeSnapCandidates,
-                        createBySnapRes?.data?.creative_snap_ids,
-                        createBySnapRes?.data?.creative_snap_id,
-                        publishInfos.map(info => info && info.creative_snap_ids)
+                    const publishInfos = (createBySnapRes.data && Array.isArray(createBySnapRes.data.publish_infos)) ? createBySnapRes.data.publish_infos : [];
+                    const combinedCreativeSnapIds = collectIds(
+                        creativeSnapIds,
+                        createBySnapRes && createBySnapRes.data && createBySnapRes.data.creative_snap_ids,
+                        createBySnapRes && createBySnapRes.data && createBySnapRes.data.creative_snap_id,
+                        publishInfos.map(info => info && info.creative_snap_ids),
+                        publishInfos.map(info => info && info.creative_snap_id)
                     );
-                    const creativeSketchIds = collectIds(
-                        creativeSketchCandidates,
-                        createBySnapRes?.data?.creative_sketch_ids,
-                        createBySnapRes?.data?.creative_sketch_id,
-                        publishInfos.map(info => info && info.creative_sketch_ids)
+                    const combinedCreativeSketchIds = collectIds(
+                        creativeSketchIds,
+                        createBySnapRes && createBySnapRes.data && createBySnapRes.data.creative_sketch_ids,
+                        createBySnapRes && createBySnapRes.data && createBySnapRes.data.creative_sketch_id,
+                        publishInfos.map(info => info && info.creative_sketch_ids),
+                        publishInfos.map(info => info && info.creative_sketch_id)
                     );
 
-                    if (!ensureIdentifiers(mergedContext, creativeSnapIds, creativeSketchIds, 'merged')) {
+                    const creativeSnapInfoList = combinedCreativeSnapIds.map((snapId, index) => ({
+                        creative_id: '',
+                        creative_snap_id: snapId,
+                        creative_sketch_id: combinedCreativeSketchIds[index] || combinedCreativeSketchIds[0] || '',
+                        need_publish: true
+                    }));
+
+                    if (!creativeSnapInfoList.length) {
+                        console.error('No creative snap info available for publish');
                         return;
                     }
 
                     await sleep(1500);
 
-                    const creativeSnapInfoList = creativeSnapIds.map((snapId, index) => ({
-                        creative_id: '',
-                        creative_snap_id: snapId,
-                        creative_sketch_id: creativeSketchIds[index] || '',
-                        need_publish: true
-                    }));
-
                     const publishPayload = {
-                        campaign_snap_id: mergedContext.campaignSnapId,
-                        campaign_sketch_id: mergedContext.campaignSketchId,
+                        campaign_id: resolvedCampaignId,
+                        campaign_snap_id: resolvedCampaignSnapId,
+                        campaign_sketch_id: resolvedCampaignSketchId,
                         coming_source_type: 1,
                         sketch_publish_source: 2,
                         need_publish: true,
@@ -1721,26 +1556,22 @@
                         ad_and_creative_snap_info_list: [
                             {
                                 ad_id: '',
-                                ad_snap_id: mergedContext.adSnapId,
-                                ad_sketch_id: mergedContext.adSketchId,
+                                ad_snap_id: resolvedAdSnapId,
+                                ad_sketch_id: resolvedAdSketchId,
                                 need_publish: true,
                                 creative_snap_info_list: creativeSnapInfoList
                             }
                         ],
                         publish_infos: [
                             {
-                                ad_snap_id: mergedContext.adSnapId,
-                                ad_sketch_id: mergedContext.adSketchId,
+                                ad_snap_id: resolvedAdSnapId,
+                                ad_sketch_id: resolvedAdSketchId,
                                 need_publish: true,
-                                creative_snap_ids: creativeSnapIds,
-                                creative_sketch_ids: creativeSketchIds
+                                creative_snap_ids: combinedCreativeSnapIds,
+                                creative_sketch_ids: combinedCreativeSketchIds
                             }
                         ]
                     };
-
-                    if (mergedContext.campaignId) {
-                        publishPayload.campaign_id = mergedContext.campaignId;
-                    }
 
                     const publishBySnapRes = await safeFetchJson(`https://ads.tiktok.com/api/v4/i18n/creation/async_creation/publish_by_snap/?aadvid=${accountID}`, {
                         headers: {'content-type': 'application/json;charset=UTF-8', 'x-csrftoken': `${csrfToken}`},
