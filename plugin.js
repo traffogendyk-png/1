@@ -1546,33 +1546,47 @@
                         return;
                     }
 
+                    const publishInfos = (createBySnapRes && createBySnapRes.data && Array.isArray(createBySnapRes.data.publish_infos))
+                        ? createBySnapRes.data.publish_infos
+                        : [];
+                    const primaryPublishInfo = publishInfos.find(info => info && (info.need_publish !== false)) || publishInfos[0] || {};
+
                     const resolvedCampaignSnapId = collectIds(
                         createBySnapRes && createBySnapRes.data && createBySnapRes.data.campaign_snap_id,
                         createBySnapRes && createBySnapRes.data && createBySnapRes.data.campaign_snap_ids,
+                        primaryPublishInfo && (primaryPublishInfo.campaign_snap_id || primaryPublishInfo.campaign_snap_ids),
                         CompaniInfo && CompaniInfo.campaign_snap_id
                     )[0] || '';
                     const resolvedCampaignSketchId = collectIds(
                         createBySnapRes && createBySnapRes.data && createBySnapRes.data.campaign_sketch_id,
                         createBySnapRes && createBySnapRes.data && createBySnapRes.data.campaign_sketch_ids,
+                        primaryPublishInfo && (primaryPublishInfo.campaign_sketch_id || primaryPublishInfo.campaign_sketch_ids),
                         CompaniInfo && CompaniInfo.campaign_sketch_id
                     )[0] || '';
                     const resolvedCampaignId = collectIds(
                         createBySnapRes && createBySnapRes.data && createBySnapRes.data.campaign_id,
                         createBySnapRes && createBySnapRes.data && createBySnapRes.data.campaign_ids,
+                        primaryPublishInfo && (primaryPublishInfo.campaign_id || primaryPublishInfo.campaign_ids),
                         baseCampaignId
                     )[0] || '';
 
                     const resolvedAdSnapId = collectIds(
+                        primaryPublishInfo && (primaryPublishInfo.ad_snap_id || primaryPublishInfo.ad_snap_ids),
                         createBySnapRes && createBySnapRes.data && createBySnapRes.data.ad_snap_id,
                         createBySnapRes && createBySnapRes.data && createBySnapRes.data.ad_snap_ids,
-                        createBySnapRes && createBySnapRes.data && createBySnapRes.data.publish_infos,
                         adsetId
                     )[0] || '';
+
                     const resolvedAdSketchId = collectIds(
+                        primaryPublishInfo && (primaryPublishInfo.ad_sketch_id || primaryPublishInfo.ad_sketch_ids),
                         createBySnapRes && createBySnapRes.data && createBySnapRes.data.ad_sketch_id,
                         createBySnapRes && createBySnapRes.data && createBySnapRes.data.ad_sketch_ids,
-                        createBySnapRes && createBySnapRes.data && createBySnapRes.data.publish_infos,
                         adScetchId
+                    )[0] || '';
+                    const resolvedAdId = collectIds(
+                        primaryPublishInfo && (primaryPublishInfo.ad_id || primaryPublishInfo.ad_ids),
+                        createBySnapRes && createBySnapRes.data && createBySnapRes.data.ad_id,
+                        createBySnapRes && createBySnapRes.data && createBySnapRes.data.ad_ids
                     )[0] || '';
 
                     if (!resolvedCampaignSnapId || !resolvedCampaignSketchId) {
@@ -1585,20 +1599,21 @@
                         return;
                     }
 
-                    const publishInfos = (createBySnapRes.data && Array.isArray(createBySnapRes.data.publish_infos)) ? createBySnapRes.data.publish_infos : [];
                     const combinedCreativeSnapIds = collectIds(
-                        creativeSnapIds,
+                        primaryPublishInfo && (primaryPublishInfo.creative_snap_ids || primaryPublishInfo.creative_snap_id),
+                        publishInfos.map(info => info && info.creative_snap_ids),
+                        publishInfos.map(info => info && info.creative_snap_id),
                         createBySnapRes && createBySnapRes.data && createBySnapRes.data.creative_snap_ids,
                         createBySnapRes && createBySnapRes.data && createBySnapRes.data.creative_snap_id,
-                        publishInfos.map(info => info && info.creative_snap_ids),
-                        publishInfos.map(info => info && info.creative_snap_id)
+                        creativeSnapIds
                     );
                     const combinedCreativeSketchIds = collectIds(
-                        creativeSketchIds,
+                        primaryPublishInfo && (primaryPublishInfo.creative_sketch_ids || primaryPublishInfo.creative_sketch_id),
+                        publishInfos.map(info => info && info.creative_sketch_ids),
+                        publishInfos.map(info => info && info.creative_sketch_id),
                         createBySnapRes && createBySnapRes.data && createBySnapRes.data.creative_sketch_ids,
                         createBySnapRes && createBySnapRes.data && createBySnapRes.data.creative_sketch_id,
-                        publishInfos.map(info => info && info.creative_sketch_ids),
-                        publishInfos.map(info => info && info.creative_sketch_id)
+                        creativeSketchIds
                     );
 
                     if (!combinedCreativeSnapIds.length || !combinedCreativeSketchIds.length) {
@@ -1638,15 +1653,23 @@
                         is_partial_publish: false,
                         ad_and_creative_snap_info_list: [
                             {
-                                ad_id: '',
+                                ad_id: resolvedAdId,
                                 ad_snap_id: resolvedAdSnapId,
                                 ad_sketch_id: resolvedAdSketchId,
                                 need_publish: true,
                                 creative_snap_info_list: creativeSnapInfoList
                             }
                         ],
-                        publish_infos: [
+                        publish_infos: publishInfos.length ? publishInfos.map(info => ({
+                            ad_id: collectIds(info && (info.ad_id || info.ad_ids))[0] || resolvedAdId,
+                            ad_snap_id: collectIds(info && (info.ad_snap_id || info.ad_snap_ids))[0] || resolvedAdSnapId,
+                            ad_sketch_id: collectIds(info && (info.ad_sketch_id || info.ad_sketch_ids))[0] || resolvedAdSketchId,
+                            need_publish: true,
+                            creative_snap_ids: collectIds(info && (info.creative_snap_ids || info.creative_snap_id)) || combinedCreativeSnapIds,
+                            creative_sketch_ids: collectIds(info && (info.creative_sketch_ids || info.creative_sketch_id)) || combinedCreativeSketchIds
+                        })) : [
                             {
+                                ad_id: resolvedAdId,
                                 ad_snap_id: resolvedAdSnapId,
                                 ad_sketch_id: resolvedAdSketchId,
                                 need_publish: true,
@@ -1655,6 +1678,10 @@
                             }
                         ]
                     };
+
+                    if (!publishPayload.campaign_id) {
+                        delete publishPayload.campaign_id;
+                    }
 
                     const publishBySnapRes = await safeFetchJson(`https://ads.tiktok.com/api/v4/i18n/creation/async_creation/publish_by_snap/?aadvid=${accountID}`, {
                         headers: {'content-type': 'application/json;charset=UTF-8', 'x-csrftoken': `${csrfToken}`},
